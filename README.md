@@ -182,6 +182,9 @@ Explore more usage examples in the [documentation](./docs/what-is-flock.mdx).
 If you are a contributor or want to work on Flock itself, see the dedicated
 [Developer Guide](./docs/developer-guide.mdx) for build, testing, and contribution details.
 
+If you are a contributor or want to work on Flock itself, see the dedicated
+[Developer Guide](https://dais-polymtl.github.io/flock/docs/developer-guide) for build, testing, and contribution details.
+
 <p align="right"><a href="#readme-top">🔝 back to top</a></p>
 
 ## 🛣️ Roadmap
