@@ -99,6 +99,9 @@ void AggregateFunctionBase::InitializePrompt(
         }
     }
 
+    // Erase context_columns before validation (kept separately in CastInputsToJson)
+    prompt_json.erase("context_columns");
+
     auto prompt_details = PromptManager::CreatePromptDetails(prompt_json);
     bind_data.prompt = prompt_details.prompt;
 }
