@@ -4,6 +4,7 @@
 #include "session.hpp"
 #include <cstdlib>
 #include <curl/curl.h>
+#include <sstream>
 
 namespace flock {
 
@@ -117,6 +118,71 @@ protected:
 
     nlohmann::json ExtractTranscriptionOutput(const nlohmann::json& response) const override {
         throw std::runtime_error("Audio transcription is not supported for Ollama provider, use Azure or OpenAI instead.");
+    }
+
+    // Ollama streaming format: each chunk has full message content (not delta).
+    // data: {"message":{"content":"Hello "},"done":false}
+    // data: {"message":{"content":" world"},"done":false}
+    // data: {"message":{"content":"!"},"done":true,"prompt_eval_count":10,"eval_count":5}
+    nlohmann::json ReconstructFromStreamedChunks(const std::string& sse_raw) const override {
+        std::string accumulated_content;
+        std::string finish_reason;
+        int64_t input_tokens = 0;
+        int64_t output_tokens = 0;
+        bool done = false;
+
+        std::istringstream stream(sse_raw);
+        std::string line;
+
+        while (std::getline(stream, line)) {
+            while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) line.erase(line.begin());
+            while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) line.pop_back();
+
+            if (line.rfind("data: ", 0) == 0) {
+                std::string json_str = line.substr(6);
+                if (json_str.empty() || json_str == "[DONE]") continue;
+                if (json_str[0] != '{' && json_str[0] != '[') continue;
+
+                nlohmann::json chunk;
+                try { chunk = nlohmann::json::parse(json_str); } catch (...) { continue; }
+
+                if (chunk.contains("message") && chunk["message"].is_object()) {
+                    if (chunk["message"].contains("content") && chunk["message"]["content"].is_string()) {
+                        accumulated_content += chunk["message"]["content"].get<std::string>();
+                    }
+                }
+
+                if (chunk.contains("done")) done = chunk["done"].get<bool>();
+
+                // Capture finish_reason and usage from the last chunk
+                if (chunk.contains("error")) {
+                    return nlohmann::json();
+                }
+                if (done) {
+                    if (chunk.contains("done_reason")) {
+                        auto& dr = chunk["done_reason"];
+                        if (dr.is_string()) finish_reason = dr.get<std::string>();
+                    }
+                    if (chunk.contains("prompt_eval_count")) input_tokens = chunk["prompt_eval_count"].get<int64_t>();
+                    if (chunk.contains("eval_count")) output_tokens = chunk["eval_count"].get<int64_t>();
+                }
+            }
+        }
+
+        if (accumulated_content.empty()) {
+            return nlohmann::json();
+        }
+
+        nlohmann::json choice = {
+                {"index", 0},
+                {"message", {"role", "assistant", "content", accumulated_content}}
+        };
+        choice["finish_reason"] = finish_reason.empty() ? "stop" : finish_reason;
+        nlohmann::json reconstructed = {
+                {"choices", nlohmann::json::array({choice})},
+                {"usage", {"prompt_tokens", input_tokens}, {"completion_tokens", output_tokens}}};
+
+        return reconstructed;
     }
 
 
