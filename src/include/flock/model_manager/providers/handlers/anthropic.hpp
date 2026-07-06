@@ -179,7 +179,9 @@ protected:
                 if (json_str.empty() || json_str[0] != '{') continue;
 
                 nlohmann::json chunk;
-                try { chunk = nlohmann::json::parse(json_str); } catch (...) { continue; }
+                try {
+                    chunk = nlohmann::json::parse(json_str);
+                } catch (...) { continue; }
 
                 if (chunk.contains("error")) return nlohmann::json();
 
@@ -195,8 +197,7 @@ protected:
                 }
 
                 // content_block_delta: accumulate text
-                if (current_event == "content_block_delta" && chunk.contains("delta")
-                    && chunk["delta"].contains("text") && chunk["delta"]["text"].is_string()) {
+                if (current_event == "content_block_delta" && chunk.contains("delta") && chunk["delta"].contains("text") && chunk["delta"]["text"].is_string()) {
                     accumulated_content += chunk["delta"]["text"].get<std::string>();
                 }
 
@@ -223,15 +224,13 @@ protected:
         // Reconstruct in the same shape Anthropic's non-streaming response would have
         // (content array with text blocks that contain JSON strings)
         nlohmann::json reconstructed = {
-                {"content", nlohmann::json::array({{"type", "text"}, {"text", accumulated_content}})}
-        };
+                {"content", nlohmann::json::array({{"type", "text"}, {"text", accumulated_content}})}};
         if (!finish_reason.empty()) reconstructed["stop_reason"] = finish_reason;
 
         if (input_tokens > 0 || output_tokens > 0) {
             reconstructed["usage"] = {
                     {"input_tokens", input_tokens},
-                    {"output_tokens", output_tokens}
-            };
+                    {"output_tokens", output_tokens}};
         }
 
         return reconstructed;

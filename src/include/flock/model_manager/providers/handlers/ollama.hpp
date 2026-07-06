@@ -138,7 +138,9 @@ protected:
                 if (json_str[0] != '{' && json_str[0] != '[') continue;
 
                 nlohmann::json chunk;
-                try { chunk = nlohmann::json::parse(json_str); } catch (...) { continue; }
+                try {
+                    chunk = nlohmann::json::parse(json_str);
+                } catch (...) { continue; }
 
                 if (chunk.contains("message") && chunk["message"].is_object()) {
                     if (chunk["message"].contains("content") && chunk["message"]["content"].is_string()) {
@@ -169,8 +171,7 @@ protected:
 
         nlohmann::json choice = {
                 {"index", 0},
-                {"message", {"role", "assistant", "content", accumulated_content}}
-        };
+                {"message", {"role", "assistant", "content", accumulated_content}}};
         choice["finish_reason"] = finish_reason.empty() ? "stop" : finish_reason;
         nlohmann::json reconstructed = {
                 {"choices", nlohmann::json::array({choice})},

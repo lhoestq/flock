@@ -353,10 +353,10 @@ protected:
 
             curl_easy_setopt(
                     requests[i].easy, CURLOPT_WRITEFUNCTION, +[](char* ptr, size_t size, size_t nmemb, void* userdata) -> size_t {
-                std::string* resp = static_cast<std::string*>(userdata);
-                resp->append(ptr, size * nmemb);
-                return size * nmemb;
-            });
+                        std::string* resp = static_cast<std::string*>(userdata);
+                        resp->append(ptr, size * nmemb);
+                        return size * nmemb;
+                    });
             curl_easy_setopt(requests[i].easy, CURLOPT_WRITEDATA, &requests[i].response);
             curl_easy_setopt(requests[i].easy, CURLOPT_TIMEOUT, 600L);
 
@@ -487,7 +487,7 @@ protected:
                 // vLLM: may send content="" on first chunk, content with answer on last chunk.
                 // Reasoning (thinking) is always in delta.reasoning and should NOT be mixed into the final answer.
                 if (chunk.contains("choices") && chunk["choices"].is_array()) {
-                    for (const auto& choice : chunk["choices"]) {
+                    for (const auto& choice: chunk["choices"]) {
                         if (choice.contains("delta") && choice["delta"].is_object()) {
                             auto& delta = choice["delta"];
                             if (delta.contains("content") && delta["content"].is_string()) {
@@ -522,8 +522,7 @@ protected:
         choice["message"] = message;
         if (!finish_reason.empty()) choice["finish_reason"] = finish_reason;
         nlohmann::json reconstructed = {
-                {"choices", nlohmann::json::array({choice})}
-        };
+                {"choices", nlohmann::json::array({choice})}};
 
         if (!usage.empty()) {
             reconstructed["usage"] = usage;
