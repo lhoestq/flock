@@ -214,7 +214,7 @@ TEST_F(LLMFilterTest, Operation_AsyncQueuesBooleanBatchesBeforeSingleCollect) {
 }
 
 TEST_F(LLMFilterTest, Operation_AsyncQueuesBooleanBatchesBeforeSingleCollect) {
-    const size_t input_count = (DEFAULT_BATCH_SIZE * 2) + 3;
+    const size_t input_count = (DEFAULT_MAX_BATCH_SIZE * 2) + 3;
 
     std::vector<bool> expected_results;
     expected_results.reserve(input_count);
@@ -223,9 +223,9 @@ TEST_F(LLMFilterTest, Operation_AsyncQueuesBooleanBatchesBeforeSingleCollect) {
     }
 
     std::vector<nlohmann::json> batch_responses;
-    for (size_t start_index = 0; start_index < input_count; start_index += DEFAULT_BATCH_SIZE) {
+    for (size_t start_index = 0; start_index < input_count; start_index += DEFAULT_MAX_BATCH_SIZE) {
         nlohmann::json batch_response = {{"items", {}}};
-        const auto batch_count = std::min<size_t>(DEFAULT_BATCH_SIZE, input_count - start_index);
+        const auto batch_count = std::min<size_t>(DEFAULT_MAX_BATCH_SIZE, input_count - start_index);
         for (size_t i = 0; i < batch_count; i++) {
             batch_response["items"].push_back(expected_results[start_index + i]);
         }
@@ -234,9 +234,9 @@ TEST_F(LLMFilterTest, Operation_AsyncQueuesBooleanBatchesBeforeSingleCollect) {
 
     {
         ::testing::InSequence sequence;
-        EXPECT_CALL(*mock_provider, AddCompletionRequest(::testing::_, DEFAULT_BATCH_SIZE, OutputType::BOOL, ::testing::_))
+        EXPECT_CALL(*mock_provider, AddCompletionRequest(::testing::_, DEFAULT_MAX_BATCH_SIZE, OutputType::BOOL, ::testing::_))
                 .Times(1);
-        EXPECT_CALL(*mock_provider, AddCompletionRequest(::testing::_, DEFAULT_BATCH_SIZE, OutputType::BOOL, ::testing::_))
+        EXPECT_CALL(*mock_provider, AddCompletionRequest(::testing::_, DEFAULT_MAX_BATCH_SIZE, OutputType::BOOL, ::testing::_))
                 .Times(1);
         EXPECT_CALL(*mock_provider, AddCompletionRequest(::testing::_, 3, OutputType::BOOL, ::testing::_))
                 .Times(1);

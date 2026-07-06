@@ -181,9 +181,6 @@ void Model::LoadModelDetails(const nlohmann::json& model_json) {
             }
         }
     }
-    if (model_details_.batch_size <= 0) {
-        throw std::runtime_error("'batch_size' must be larger than 0");
-    }
 
     if (model_json.contains("is_async")) {
         model_details_.is_async = model_json.at("is_async").get<bool>();
@@ -195,6 +192,38 @@ void Model::LoadModelDetails(const nlohmann::json& model_json) {
             model_details_.is_async = db_model_args.at("is_async").get<bool>();
         } else {
             model_details_.is_async = true;
+        }
+    }
+
+    if (model_json.contains("rate_limit")) {
+        model_details_.rate_limit = ParsePositiveSizeFromJson(model_json.at("rate_limit"), "rate_limit");
+    } else {
+        ensure_db_loaded();
+        if (db_model_args.contains("rate_limit")) {
+            model_details_.rate_limit = ParsePositiveSizeFromJson(db_model_args.at("rate_limit"), "rate_limit");
+        }
+    }
+
+    if (model_json.contains("usage_limit")) {
+        const auto& usage_limit_value = model_json.at("usage_limit");
+        if (!usage_limit_value.is_object()) {
+            throw std::runtime_error("Expected 'usage_limit' to be a JSON object.");
+        }
+        model_details_.usage_limit = ParseUsageLimitFromJson(usage_limit_value);
+        if (!model_details_.usage_limit->HasAnyLimit()) {
+            throw std::runtime_error(
+                    "'usage_limit' must specify at least one of prompt_tokens_limit, completion_tokens_limit, or "
+                    "total_tokens_limit.");
+        }
+    } else if (!is_fully_resolved) {
+        ensure_db_loaded();
+        if (db_model_args.contains("usage_limit")) {
+            model_details_.usage_limit = ParseUsageLimitFromJson(db_model_args.at("usage_limit"));
+            if (!model_details_.usage_limit->HasAnyLimit()) {
+                throw std::runtime_error(
+                        "'usage_limit' must specify at least one of prompt_tokens_limit, completion_tokens_limit, or "
+                        "total_tokens_limit.");
+            }
         }
     }
 }
