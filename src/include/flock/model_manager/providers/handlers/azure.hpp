@@ -102,51 +102,9 @@ protected:
     }
 
     // Azure uses the same streaming format as OpenAI
+    // Azure uses the same OpenAI-compatible streaming format as OpenAI.
     nlohmann::json ReconstructFromStreamedChunks(const std::string& sse_raw) const override {
-        std::string accumulated_content;
-        std::string finish_reason;
-        nlohmann::json usage;
-        std::istringstream stream(sse_raw);
-        std::string line;
-
-        while (std::getline(stream, line)) {
-            while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) line.erase(line.begin());
-            while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) line.pop_back();
-
-            if (line.rfind("data: ", 0) == 0) {
-                std::string json_str = line.substr(6);
-                if (json_str.empty() || json_str == "[DONE]") continue;
-                if (json_str[0] != '{' && json_str[0] != '[') continue;
-
-                nlohmann::json chunk;
-                try { chunk = nlohmann::json::parse(json_str); } catch (...) { continue; }
-
-                if (chunk.contains("choices") && chunk["choices"].is_array()) {
-                    for (const auto& choice: chunk["choices"]) {
-                        if (choice.contains("delta") && choice["delta"].contains("content")) {
-                            if (choice["delta"]["content"].is_string()) {
-                                accumulated_content += choice["delta"]["content"].get<std::string>();
-                            }
-                        }
-                        if (choice.contains("finish_reason") && choice["finish_reason"].is_string()) {
-                            finish_reason = choice["finish_reason"].get<std::string>();
-                        }
-                    }
-                }
-                if (chunk.contains("usage")) usage = chunk["usage"];
-            }
-        }
-
-        nlohmann::json choice = {
-                {"index", 0},
-                {"message", {"role", "assistant", "content", accumulated_content}}
-        };
-        if (!finish_reason.empty()) choice["finish_reason"] = finish_reason;
-        nlohmann::json reconstructed = {
-                {"choices", nlohmann::json::array({choice})}
-        };
-        if (!usage.empty()) reconstructed["usage"] = usage;
-        return reconstructed;
+        return ReconstructOpenAIStreamingChunks(sse_raw);
     }
 
 

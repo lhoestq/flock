@@ -454,6 +454,84 @@ protected:
         return nlohmann::json();
     }
 
+    // Shared utility: Reconstruct OpenAI-compatible completion JSON from SSE chunks.
+    // Handles the standard format with content in delta.content.
+    // Returns the reconstructed JSON in OpenAI non-streaming format shape.
+    static nlohmann::json ReconstructOpenAIStreamingChunks(const std::string& sse_raw) {
+        std::string accumulated_content;
+        std::string finish_reason;
+        nlohmann::json usage;
+
+        std::istringstream stream(sse_raw);
+        std::string line;
+
+        while (std::getline(stream, line)) {
+            // Trim whitespace
+            while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) line.erase(line.begin());
+            while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) line.pop_back();
+
+            if (line.rfind("data: ", 0) == 0) {
+                std::string json_str = line.substr(6);
+                if (json_str.empty() || json_str == "[DONE]") continue;
+                if (json_str[0] != '{' && json_str[0] != '[') continue;
+
+                nlohmann::json chunk;
+                try {
+                    chunk = nlohmann::json::parse(json_str);
+                } catch (...) {
+                    continue;
+                }
+
+                // Accumulate delta content from choices.
+                // Standard OpenAI: content is in delta.content.
+                // vLLM: may send content="" on first chunk, content with answer on last chunk.
+                // Reasoning (thinking) is always in delta.reasoning and should NOT be mixed into the final answer.
+                if (chunk.contains("choices") && chunk["choices"].is_array()) {
+                    for (const auto& choice : chunk["choices"]) {
+                        if (choice.contains("delta") && choice["delta"].is_object()) {
+                            auto& delta = choice["delta"];
+                            if (delta.contains("content") && delta["content"].is_string()) {
+                                std::string c = delta["content"].get<std::string>();
+                                if (!c.empty()) {
+                                    accumulated_content += c;
+                                }
+                            }
+                            // Note: we intentionally DO NOT accumulate delta.reasoning.
+                            // Reasoning is the model's thinking process and should be excluded from the final answer.
+                        }
+                        // Capture finish_reason from the last chunk that has it
+                        if (choice.contains("finish_reason") && choice["finish_reason"].is_string()) {
+                            finish_reason = choice["finish_reason"].get<std::string>();
+                        }
+                    }
+                }
+
+                // Capture usage - usually in the last chunk (can be at top level)
+                if (chunk.contains("usage")) {
+                    usage = chunk["usage"];
+                }
+            }
+        }
+
+        // Build the reconstructed JSON in the same shape as non-streaming response
+        nlohmann::json message;
+        message["role"] = "assistant";
+        message["content"] = accumulated_content;
+        nlohmann::json choice;
+        choice["index"] = 0;
+        choice["message"] = message;
+        if (!finish_reason.empty()) choice["finish_reason"] = finish_reason;
+        nlohmann::json reconstructed = {
+                {"choices", nlohmann::json::array({choice})}
+        };
+
+        if (!usage.empty()) {
+            reconstructed["usage"] = usage;
+        }
+
+        return reconstructed;
+    }
+
     // Unified extraction method - delegates to specific Extract* methods based on request type
     nlohmann::json ExtractOutput(const nlohmann::json& parsed, RequestType request_type) const {
         if (request_type == RequestType::Completion) {
