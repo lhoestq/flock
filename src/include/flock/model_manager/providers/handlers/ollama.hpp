@@ -190,9 +190,8 @@ protected:
         nlohmann::json reconstructed;
         reconstructed["choices"] = nlohmann::json::array({choice});
         reconstructed["usage"] = {
-            {"prompt_tokens", input_tokens},
-            {"completion_tokens", output_tokens}
-        };
+                {"prompt_tokens", input_tokens},
+                {"completion_tokens", output_tokens}};
 
         return reconstructed;
     }
