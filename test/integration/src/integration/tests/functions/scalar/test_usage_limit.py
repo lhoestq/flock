@@ -145,15 +145,12 @@ def test_usage_limit_openai_compatible_single_call_succeeds(integration_setup, o
     duckdb_cli_path, db_path = integration_setup
     flock_model_name = f"test-usage-limit-{_model_slug(openai_compatible_model)}-single"
 
-    query = (
-        _openai_compatible_setup_sql(openai_compatible_model, flock_model_name, total_tokens_limit=100_000)
-        + f"""
+    query = _openai_compatible_setup_sql(openai_compatible_model, flock_model_name, total_tokens_limit=100_000) + f"""
     SELECT llm_complete(
         {{'model_name': '{flock_model_name}', 'secret_name': '{SECRET_NAME}'}},
         {{'prompt': 'Reply with one word: hello'}}
     ) AS result;
     """
-    )
     result = run_cli(duckdb_cli_path, db_path, query, with_secrets=False)
 
     assert result.returncode == 0, f"Expected success under quota: {result.stderr}"
@@ -165,9 +162,7 @@ def test_usage_limit_openai_compatible_exceeded_on_batch(integration_setup, open
     duckdb_cli_path, db_path = integration_setup
     flock_model_name = f"test-usage-limit-{_model_slug(openai_compatible_model)}-batch"
 
-    query = (
-        _openai_compatible_setup_sql(openai_compatible_model, flock_model_name, total_tokens_limit=100)
-        + """
+    query = _openai_compatible_setup_sql(openai_compatible_model, flock_model_name, total_tokens_limit=100) + """
     CREATE OR REPLACE TABLE usage_limit_prompts AS
     SELECT * FROM (VALUES
         ('alpha'),
@@ -176,9 +171,7 @@ def test_usage_limit_openai_compatible_exceeded_on_batch(integration_setup, open
         ('delta'),
         ('epsilon')
     ) AS t(prompt);
-    """
-        + _llm_complete_over_prompts_sql(flock_model_name, "usage_limit_prompts")
-    )
+    """ + _llm_complete_over_prompts_sql(flock_model_name, "usage_limit_prompts")
     result = run_cli(duckdb_cli_path, db_path, query, with_secrets=False)
 
     _assert_usage_limit_exceeded(result, expected_token_type="total_tokens")
