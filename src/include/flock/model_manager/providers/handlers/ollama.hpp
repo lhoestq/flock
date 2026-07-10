@@ -28,6 +28,10 @@ protected:
     std::string getCompletionUrl() const override { return _url + "/api/chat"; }
     std::string getEmbedUrl() const override { return _url + "/api/embed"; }
     std::string getTranscriptionUrl() const override { return ""; }
+    std::vector<std::string> getExtraHeaders() const override {
+        // Add Connection: close to prevent curl_multi_wait from hanging on keepalive
+        return {"Connection: close"};
+    }
     void prepareSessionForRequest(const std::string& url) override { _session.setUrl(url); }
     void setParameters(const std::string& data, const std::string& contentType = "") override {
         if (contentType != "multipart/form-data") {
@@ -57,48 +61,42 @@ protected:
     }
 
     nlohmann::json ExtractCompletionOutput(const nlohmann::json& response) const override {
-        if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
-            const auto& choice = response["choices"][0];
-            if (choice.contains("message") && choice["message"].is_object()) {
-                const auto& message = choice["message"];
-                if (message.contains("content")) {
-                    const auto& content = message["content"];
-                    if (content.is_null()) {
-                        std::cerr << "Error: Ollama API returned null content in message. Full response: " << response.dump(2) << std::endl;
-                        throw std::runtime_error("Ollama API returned null content in message. Response: " + response.dump());
-                    }
-                    if (content.is_string()) {
-                        try {
-                            auto parsed = nlohmann::json::parse(content.get<std::string>());
-                            // Validate that parsed result has expected structure for aggregate functions
-                            if (!parsed.contains("items") || !parsed["items"].is_array()) {
-                                std::cerr << "Warning: Parsed content does not contain 'items' array. Parsed: " << parsed.dump(2) << std::endl;
-                            }
-                            return parsed;
-                        } catch (const std::exception& e) {
-                            std::cerr << "Error: Failed to parse Ollama response content as JSON: " << e.what() << std::endl;
-                            std::cerr << "Content was: " << content.dump() << std::endl;
-                            throw std::runtime_error("Failed to parse Ollama response as JSON: " + std::string(e.what()) + ". Content: " + content.dump());
+        if (response.contains("message") && response["message"].is_object()) {
+            const auto& message = response["message"];
+            if (message.contains("content")) {
+                const auto& content = message["content"];
+                if (content.is_null()) {
+                    std::cerr << "Error: Ollama API returned null content in message. Full response: " << response.dump(2) << std::endl;
+                    throw std::runtime_error("Ollama API returned null content in message. Response: " + response.dump());
+                }
+                if (content.is_string()) {
+                    try {
+                        auto parsed = nlohmann::json::parse(content.get<std::string>());
+                        // Validate that parsed result has expected structure for aggregate functions
+                        if (!parsed.contains("items") || !parsed["items"].is_array()) {
+                            std::cerr << "Warning: Parsed content does not contain 'items' array. Parsed: " << parsed.dump(2) << std::endl;
                         }
-                    } else {
-                        // Content might already be a JSON object
-                        // Validate structure
-                        if (!content.contains("items") || !content["items"].is_array()) {
-                            std::cerr << "Warning: Content does not contain 'items' array. Content: " << content.dump(2) << std::endl;
-                        }
-                        return content;
+                        return parsed;
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error: Failed to parse Ollama response content as JSON: " << e.what() << std::endl;
+                        std::cerr << "Content was: " << content.dump() << std::endl;
+                        throw std::runtime_error("Failed to parse Ollama response as JSON: " + std::string(e.what()) + ". Content: " + content.dump());
                     }
                 } else {
-                    std::cerr << "Error: Ollama API response missing 'content' field in message. Full response: " << response.dump(2) << std::endl;
-                    throw std::runtime_error("Ollama API response missing message.content field. Response: " + response.dump());
+                    // Content might already be a JSON object
+                    // Validate structure
+                    if (!content.contains("items") || !content["items"].is_array()) {
+                        std::cerr << "Warning: Content does not contain 'items' array. Content: " << content.dump(2) << std::endl;
+                    }
+                    return content;
                 }
             } else {
-                std::cerr << "Error: Ollama API response missing 'message' object. Full response: " << response.dump(2) << std::endl;
-                throw std::runtime_error("Ollama API response missing message field. Response: " + response.dump());
+                std::cerr << "Error: Ollama API response missing 'content' field in message. Full response: " << response.dump(2) << std::endl;
+                throw std::runtime_error("Ollama API response missing message.content field. Response: " + response.dump());
             }
         } else {
-            std::cerr << "Error: Ollama API response missing 'choices' array. Full response: " << response.dump(2) << std::endl;
-            throw std::runtime_error("Ollama API response missing choices field. Response: " + response.dump());
+            std::cerr << "Error: Ollama API response missing 'message' object. Full response: " << response.dump(2) << std::endl;
+            throw std::runtime_error("Ollama API response missing message field. Response: " + response.dump());
         }
     }
 
@@ -180,18 +178,15 @@ protected:
             return nlohmann::json();
         }
 
-        nlohmann::json message;
-        message["role"] = "assistant";
-        message["content"] = accumulated_content;
-        nlohmann::json choice;
-        choice["index"] = 0;
-        choice["message"] = message;
-        choice["finish_reason"] = finish_reason.empty() ? "stop" : finish_reason;
         nlohmann::json reconstructed;
-        reconstructed["choices"] = nlohmann::json::array({choice});
-        reconstructed["usage"] = {
-                {"prompt_tokens", input_tokens},
-                {"completion_tokens", output_tokens}};
+        reconstructed["message"]["content"] = accumulated_content;
+        reconstructed["message"]["role"] = "assistant";
+        if (!finish_reason.empty()) {
+            reconstructed["done_reason"] = finish_reason;
+        }
+        reconstructed["done"] = true;
+        if (input_tokens > 0) reconstructed["prompt_eval_count"] = input_tokens;
+        if (output_tokens > 0) reconstructed["eval_count"] = output_tokens;
 
         return reconstructed;
     }
